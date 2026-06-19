@@ -7,3 +7,6 @@ resources.neu
 .DS_Store
 .tmp/
 *.db
+venv/
+*.tmp
+build/

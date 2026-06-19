@@ -17,8 +17,12 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
-from .database import get_db, engine, Base
-from .models import MediaItem, MediaKind, Face
+try:
+    from .database import get_db, engine, Base
+    from .models import MediaItem, MediaKind, Face
+except ImportError:
+    from database import get_db, engine, Base
+    from models import MediaItem, MediaKind, Face
 from pillow_heif import register_heif_opener
 from PIL import Image
 
@@ -500,7 +504,10 @@ def extract_faces_from_video(item_id: str, video_path: str, db_session, all_db_f
 @app.post("/api/analyze/faces")
 async def analyze_faces(background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """Background task to detect faces in all unscanned images and videos."""
-    from .database import SessionLocal
+    try:
+        from .database import SessionLocal
+    except ImportError:
+        from database import SessionLocal
     
     with _scan_lock:
         if _scan_status["running"]:

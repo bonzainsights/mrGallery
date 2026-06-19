@@ -1,7 +1,10 @@
 import enum
 from sqlalchemy import Column, String, Integer, Float, Boolean, Enum, ForeignKey
 from sqlalchemy.orm import relationship
-from .database import Base
+try:
+    from .database import Base
+except ImportError:
+    from database import Base
 
 class MediaKind(str, enum.Enum):
     IMAGE = "image"
