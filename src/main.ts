@@ -8,6 +8,7 @@ import {
   Files,
   FolderCog,
   FolderOpen,
+  FolderSearch,
   FolderTree,
   Globe2,
   HardDrive,
@@ -29,6 +30,7 @@ import {
 } from 'lucide';
 import { computeAverageHash, extractImageMetadata } from './lib/analysis';
 import { buildDuplicateGroups, type DuplicateGroup } from './lib/duplicates';
+import { getFolderBranchOptions, normalizeFolderPath } from './lib/folders';
 import {
   buildFolderGroups,
   buildKindGroups,
@@ -137,6 +139,7 @@ const LUCIDE_ICONS = {
   Files,
   FolderCog,
   FolderOpen,
+  FolderSearch,
   FolderTree,
   Globe2,
   HardDrive,
@@ -783,6 +786,8 @@ function renderDuplicateView(): string {
 }
 
 function renderManageFoldersView(): string {
+  const branchOptions = getFolderBranchOptions(state.folderStats);
+
   if (state.folderStats.length === 0) {
     return `
       <div class="empty-state">
@@ -797,8 +802,24 @@ function renderManageFoldersView(): string {
   return `
     <div class="folders-view" style="padding: 24px;">
       <h2 style="margin-bottom: 16px; font-size: 20px; font-weight: 500;">Manage Folders</h2>
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+      <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
         <button class="button primary" data-action="add-folder"><i data-lucide="folder-open"></i><span>Add new folder</span></button>
+        <div style="display: flex; gap: 8px; flex: 1 1 460px; min-width: 280px;">
+          <input
+            id="folder-branch-input"
+            list="folder-branch-options"
+            placeholder="Folder branch path"
+            style="flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 12px;"
+          />
+          <datalist id="folder-branch-options">
+            ${branchOptions.map(option => `
+              <option value="${escapeAttr(option.path)}" label="${option.count} media items"></option>
+            `).join('')}
+          </datalist>
+          <button class="button" data-action="remove-folder-branch" style="color: var(--error);">
+            <i data-lucide="trash-2"></i><span>Remove branch</span>
+          </button>
+        </div>
       </div>
       <div class="folder-list" style="display: flex; flex-direction: column; gap: 12px;">
         ${state.folderStats.map(stat => `
@@ -1194,6 +1215,14 @@ function wireContentEmptyActions(): void {
   });
   contentEl.querySelector('[data-action="analyze"]')?.addEventListener('click', () => void analyzeDuplicates());
   contentEl.querySelector('[data-action="scan-faces"]')?.addEventListener('click', () => void startFaceScan());
+  contentEl.querySelector<HTMLButtonElement>('[data-action="remove-folder-branch"]')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    const input = contentEl.querySelector<HTMLInputElement>('#folder-branch-input');
+    const folder = normalizeFolderPath(input?.value ?? '');
+    void removeFolderBranch(folder, event.currentTarget as HTMLButtonElement);
+  });
   
   contentEl.querySelectorAll<HTMLButtonElement>('.remove-folder-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -1205,28 +1234,36 @@ function wireContentEmptyActions(): void {
         setReady('Error: missing folder attribute on button.');
         return;
       }
-      
-      try {
-        setBusy('Removing folder...');
-        btn.disabled = true;
-        await apiRemoveFolder(folder);
-        
-        // Refresh folder list
-        state.folderStats = await apiGetFolders();
-        setReady('Folder removed.');
-        smartUpdate();
-        
-        // Also fully reload items to remove the items from timeline
-        currentPage = 0;
-        hasMore = true;
-        await loadNextPage();
-      } catch (err) {
-        console.error(err);
-        setReady('Failed to remove folder.');
-        btn.disabled = false;
-      }
+
+      await removeFolderBranch(folder, btn);
     });
   });
+}
+
+async function removeFolderBranch(folder: string, button?: HTMLButtonElement): Promise<void> {
+  const normalizedFolder = normalizeFolderPath(folder);
+  if (!normalizedFolder) {
+    setReady('Enter a folder branch path.');
+    return;
+  }
+
+  try {
+    setBusy('Removing folder branch...');
+    if (button) button.disabled = true;
+    const deleted = await apiRemoveFolder(normalizedFolder);
+
+    state.folderStats = await apiGetFolders();
+    smartUpdate();
+
+    currentPage = 0;
+    hasMore = true;
+    await loadNextPage();
+    setReady(`Removed ${deleted} media items.`);
+  } catch (err) {
+    console.error(err);
+    setReady('Failed to remove folder branch.');
+    if (button) button.disabled = false;
+  }
 }
 
 let _faceScanPollTimer: ReturnType<typeof setInterval> | null = null;

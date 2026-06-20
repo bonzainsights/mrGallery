@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, or_
 import hashlib
 import json
 import cv2
@@ -19,9 +19,11 @@ from pydantic import BaseModel
 
 try:
     from .database import get_db, engine, Base
+    from .folder_paths import folder_branch_like_patterns, folder_path_variants, normalize_folder_path
     from .models import MediaItem, MediaKind, Face
 except ImportError:
     from database import get_db, engine, Base
+    from folder_paths import folder_branch_like_patterns, folder_path_variants, normalize_folder_path
     from models import MediaItem, MediaKind, Face
 from pillow_heif import register_heif_opener
 from PIL import Image
@@ -595,8 +597,21 @@ async def get_folders(db: AsyncSession = Depends(get_db)):
 
 @app.delete("/api/folders")
 async def remove_folder(req: DeleteFolderRequest, db: AsyncSession = Depends(get_db)):
-    """Removes a folder and all its media items from the database (does not delete files from disk)."""
-    result = await db.execute(select(MediaItem).where(MediaItem.folder == req.folder))
+    """Removes a folder branch and all its media items from the database (does not delete files from disk)."""
+    folder = normalize_folder_path(req.folder)
+    if not folder:
+        raise HTTPException(status_code=400, detail="Missing folder path")
+
+    folder_filters = [
+        MediaItem.folder == variant
+        for variant in folder_path_variants(folder)
+    ]
+    folder_filters.extend(
+        MediaItem.folder.like(pattern, escape="\\")
+        for pattern in folder_branch_like_patterns(folder)
+    )
+
+    result = await db.execute(select(MediaItem).where(or_(*folder_filters)))
     items = result.scalars().all()
     
     deleted = 0
@@ -605,7 +620,7 @@ async def remove_folder(req: DeleteFolderRequest, db: AsyncSession = Depends(get
         deleted += 1
         
     await db.commit()
-    return {"status": "ok", "deleted": deleted}
+    return {"status": "ok", "folder": folder, "deleted": deleted}
 
 
 @app.get("/api/dialog/folder")
