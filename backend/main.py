@@ -47,6 +47,22 @@ if os.path.exists(YUNET_PATH) and os.path.exists(SFACE_PATH):
     face_detector = cv2.FaceDetectorYN.create(YUNET_PATH, "", (320, 320))
     face_recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
 
+_STANDARD_STREAM_HANDLES = []
+
+def ensure_standard_streams():
+    """Provide file-like std streams for PyInstaller --noconsole Windows builds."""
+    stream_specs = (
+        ("stdin", "r"),
+        ("stdout", "w"),
+        ("stderr", "w"),
+    )
+
+    for stream_name, mode in stream_specs:
+        if getattr(sys, stream_name) is None:
+            stream = open(os.devnull, mode, encoding="utf-8")
+            setattr(sys, stream_name, stream)
+            _STANDARD_STREAM_HANDLES.append(stream)
+
 def compute_dhash(image_path: str, hash_size: int = 8) -> str:
     """Computes a perceptual hash (difference hash) for an image."""
     try:
@@ -707,6 +723,7 @@ async def shutdown_server():
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()  # Required for PyInstaller on Windows
+    ensure_standard_streams()
     import uvicorn
     port = 8000
     if len(sys.argv) > 1:
