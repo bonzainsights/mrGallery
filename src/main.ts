@@ -450,12 +450,24 @@ function closeInspector(): void {
 export async function initializeApp(): Promise<void> {
   const backendLaunch = await startBundledBackend();
   if (backendLaunch.status === 'failed') {
-    console.error('Failed to start bundled backend:', backendLaunch.error);
+    console.error('Failed to start bundled backend:', {
+      error: backendLaunch.error,
+      triedPaths: backendLaunch.backendPathCandidates
+    });
+  } else if (backendLaunch.status === 'launched') {
+    console.info(`Started bundled backend with ${backendLaunch.method}: ${backendLaunch.backendPath}`);
   }
   registerBackendShutdown();
 
   // Draw initial shell immediately so the UI is always interactive
   fullRender();
+
+  if (backendLaunch.status === 'failed') {
+    state.busy = false;
+    state.status = 'Error: bundled backend failed to launch. See console for tried paths.';
+    updateStatusBar();
+    return;
+  }
 
   state.status = backendLaunch.status === 'launched'
     ? 'Starting bundled backend...'
