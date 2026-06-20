@@ -1106,8 +1106,6 @@ function wireEvents(): void {
     }
   });
 
-  // Empty state buttons inside content area
-  wireContentEmptyActions();
 }
 
 function wireInspectorEvents(): void {
@@ -1337,6 +1335,7 @@ let currentPage = 0;
 const PAGE_SIZE = 50000;
 let hasMore = true;
 let isLoadingPage = false;
+let isAddingFolder = false;
 
 async function loadNextPage(): Promise<void> {
   if (isLoadingPage || !hasMore) return;
@@ -1371,22 +1370,25 @@ async function loadNextPage(): Promise<void> {
 }
 
 async function addFolder(): Promise<void> {
+  if (isAddingFolder) return;
+
+  isAddingFolder = true;
   let folder: string | null = null;
 
   try {
-    folder = await showNeutralinoFolderDialog('Select a folder to scan');
-  } catch (e) {
-    console.warn('Neutralino folder dialog failed, falling back to backend API', e);
-  }
+    try {
+      folder = await showNeutralinoFolderDialog('Select a folder to scan');
+    } catch (e) {
+      console.warn('Neutralino folder dialog failed, falling back to backend API', e);
+    }
 
-  if (!folder) {
-    folder = await apiPickFolder();
-  }
+    if (!folder) {
+      folder = await apiPickFolder();
+    }
 
-  // No selection made (user cancelled or both APIs unavailable)
-  if (!folder) return;
+    // No selection made (user cancelled or both APIs unavailable)
+    if (!folder) return;
 
-  try {
     setBusy(`Scanning ${folder}...`);
     const addedCount = await apiScanFolder(folder);
     setReady(`Added ${addedCount} media files.`);
@@ -1402,6 +1404,8 @@ async function addFolder(): Promise<void> {
     }
   } catch (error) {
     setReady('Failed to scan folder.');
+  } finally {
+    isAddingFolder = false;
   }
 }
 
